@@ -102,26 +102,24 @@ ui <- dashboardPage(
                                     "Winnebago Co." = "WINNEBAGO",
                                     "Wood Co." = "WOOD"),
                         selected = "State Summary",
-                        selectize = TRUE),
-            
-            selectInput("y_metric",
-                        "Select Outcome Measure",
-                        choices = c("New Positive Cases" = "pos_new",
-                                    "New Deaths" = "dth_new",
-                                    "Cumulative Positive Cases" = "positive",
-                                    "Cumulative Deaths" = "deaths"),
-                        selected = "New Positive Cases")
+                        selectize = TRUE)
         )
     ),
     dashboardBody(
         tabItems(
             tabItem(tabName = "dashboard",
-                # fluidRow(dataTableOutput("table")),
                 
                 plotlyOutput("pos_new", height = "600px")
                 ),
             
-            tabItem(tabName = "about")
+            tabItem(tabName = "about",
+                    h1("About"),
+                    h2("Data"),
+                    p("Data comes from the Wisconsin Department of Health Services:"),
+                    a("https://www.dhs.wisconsin.gov/covid-19/index.htm"),
+                    h2("Authorship"),
+                    p("App developed by Justin Marschall.  For source code or to report a bug, visit:"), 
+                    a("https://github.com/justinmarschall/wi_covid_app"))
         )
     )
 )
