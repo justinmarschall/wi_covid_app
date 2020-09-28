@@ -116,13 +116,13 @@ ui <- dashboardPage(
                     h1("About"),
                     h2("Data"),
                     p("Data comes from the Wisconsin Department of Health Services (DHS): ",
-                      a("https://www.dhs.wisconsin.gov/covid-19/index.htm")),
+                      a(href = "https://www.dhs.wisconsin.gov/covid-19/index.htm", "https://www.dhs.wisconsin.gov/covid-19/index.htm")),
                     p("Please visit the DHS website for access to the data, 
                       a data dictionary, and responses to frequently asked questions 
                       (such as why confirmed cases can change from one day to the next)."),
                     h2("Authorship"),
                     p("App developed by Justin Marschall.  For source code or to report a bug, visit:", 
-                      a("https://github.com/justinmarschall/wi_covid_app")),
+                      a(href = "https://github.com/justinmarschall/wi_covid_app", "https://github.com/justinmarschall/wi_covid_app")),
                     h2("Disclaimer"),
                     p("While every attempt has been made to accurately represent these data, this app comes with no warrenty or guarantee."))
         )
