@@ -5,8 +5,8 @@ account: justin-marschall
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 2905366
-bundleId: 3680593
+bundleId: 3680807
 url: https://justin-marschall.shinyapps.io/wi_covid_app/
-when: 1601326611.56497
+when: 1601330439.26359
 asMultiple: FALSE
 asStatic: FALSE
