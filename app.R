@@ -12,12 +12,14 @@ library(plotly)
 library(jsonlite)
 library(zoo)
 library(DT)
-
+library(waiter)
+library(scales)
 
 # ui ----------------------------------------------------------------------
 
-ui <- dashboardPage(
-    dashboardHeader(title = "WI COVID-19 Dashboard", titleWidth = 250),
+# create ui
+ui <- dashboardPage(skin = "blue",
+    dashboardHeader(title = "Wisconsin COVID-19 Dashboard", titleWidth = 325),
     dashboardSidebar(
         sidebarMenu(
             menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
@@ -27,7 +29,7 @@ ui <- dashboardPage(
             tags$hr(),
             
             selectInput("api_filter", 
-                        "Select State or County Summary",
+                        "Select State or County",
                         choices = c("State Summary" = "WI",
                                     "Adams Co." = "ADAMS",
                                     "Ashland Co." = "ASHLAND",
@@ -106,10 +108,23 @@ ui <- dashboardPage(
         )
     ),
     dashboardBody(
+        use_waiter(),
+        waiter_show_on_load(html = spin_folding_cube()),
         tabItems(
             tabItem(tabName = "dashboard",
-                
-                plotlyOutput("pos_new", height = "600px")
+                fluidRow(
+                    valueBoxOutput("vb_positive", width = 3),
+                    valueBoxOutput("vb_pos_new", width = 3),
+                    valueBoxOutput("vb_deaths", width = 3),
+                    valueBoxOutput("vb_dth_new", width = 3),
+                    ),
+                fluidRow(
+                    valueBoxOutput("vb_pos_new_pct", width = 3),
+                    valueBoxOutput("vb_test_new", width = 3),
+                    valueBoxOutput("vb_hosp_yes", width = 3),
+                    valueBoxOutput("vb_hosp_new", width = 3)
+                ),
+                fluidRow(plotlyOutput("pos_new", height = "800px"))
                 ),
             
             tabItem(tabName = "about",
@@ -120,17 +135,22 @@ ui <- dashboardPage(
                     p("Please visit the DHS website for access to the data, 
                       a data dictionary, and responses to frequently asked questions 
                       (such as why confirmed cases can change from one day to the next)."),
+                    h2("Plots"),
+                    p("Plots are interactive.  Click on a legend element to add/remove.  Click and drag to zoom.  Double click to reset axes."),
                     h2("Authorship"),
                     p("App developed by Justin Marschall.  For source code or to report a bug, visit:", 
                       a(href = "https://github.com/justinmarschall/wi_covid_app", "https://github.com/justinmarschall/wi_covid_app")),
                     h2("Disclaimer"),
-                    p("While every attempt has been made to accurately represent these data, this app comes with no warrenty or guarantee."))
+                    p("While every attempt has been made to accurately represent these data, this app comes with no warrenty or guarantee."),
+                    h2("Last Updated"),
+                    verbatimTextOutput("max_date"))
         )
     )
 )
 
 # server ------------------------------------------------------------------
 
+# create function to call API and get data
 get_data <- function(x){
     json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=NAME%20%3D%20'", x, "'&outFields=*&outSR=4326&f=json")
     
@@ -164,16 +184,16 @@ get_data <- function(x){
 }
 
 
-
+# create server
 server <- function(input, output) {
     
+    # get data
     df <- reactive({
         get_data(x = input$api_filter)
         
     })
     
-    output$table <- DT::renderDataTable(df())
-    
+    # create plot
     output$pos_new <- renderPlotly(
         plot_ly(df(), x = ~date, y = ~pos_new, type = "scatter", mode = "lines", name = "Raw Data", color = I("#3288BD")) %>% 
             add_trace(y = ~pos_new_7, name = "Rolling 7-Day Mean", color = I("#F46D43")) %>% 
@@ -182,6 +202,105 @@ server <- function(input, output) {
                    xaxis = list(title = "Date"),
                    title = "\nNew Positive Cases by Day")
     )
+    
+    # calculate last updated value
+    output$max_date <- renderPrint({
+        df() %>% 
+            slice(which.max(date)) %>% 
+            pull(date)
+        })
+    
+    # create value box: cumulative positive cases
+    output$vb_positive <- renderValueBox({
+        vb_positive <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(positive)
+        
+        valueBox(comma(vb_positive), subtitle = "Cumulative Positive Cases", icon = icon("viruses"), color = "blue")
+        
+    })
+    
+    # create value box: new positive cases
+    output$vb_pos_new <- renderValueBox({
+        vb_pos_new <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(pos_new)
+        
+        valueBox(comma(vb_pos_new), subtitle = "New Positive Cases", icon = icon("head-side-virus"), color = "blue")
+        
+    })
+    
+    # create value box: cumulative deaths
+    output$vb_deaths <- renderValueBox({
+        vb_deaths <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(deaths)
+        
+        valueBox(comma(vb_deaths), subtitle = "Cumulative Deaths", icon = icon("book-medical"), color = "red")
+        
+    })
+    
+    # create value box: new deaths
+    output$vb_dth_new <- renderValueBox({
+        vb_dth_new <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(dth_new)
+        
+        valueBox(comma(vb_dth_new), subtitle = "New Deaths", icon = icon("ambulance"), color = "red")
+        
+    })
+    
+    # create value box: percent of new positive cases
+    output$vb_pos_new_pct <- renderValueBox({
+        vb_pos_new_pct <- 
+            df() %>% 
+            mutate(pos_new_pct = pos_new / (pos_new + neg_new)) %>% 
+            slice(which.max(date)) %>% 
+            pull(pos_new_pct)
+        
+        valueBox(percent(vb_pos_new_pct, accuracy = 0.1), subtitle = "Percent of New Tests that are Positive", icon = icon("percent"), color = "orange")
+        
+    })
+    
+    # create value box: new tests
+    output$vb_test_new <- renderValueBox({
+        vb_test_new <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(test_new)
+        
+        valueBox(comma(vb_test_new), subtitle = "New Tests", icon = icon("vial"), color = "orange")
+        
+    })
+    
+    # create value box: cumulative hospitalizations
+    output$vb_hosp_yes <- renderValueBox({
+        vb_hosp_yes <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(hosp_yes)
+        
+        valueBox(comma(vb_hosp_yes), subtitle = "Cumulative Hospitalizations", icon = icon("hospital"), color = "green")
+        
+    })
+    
+    # create value box: new hospitalizations
+    output$vb_hosp_new <- renderValueBox({
+        vb_hosp_new <- 
+            df() %>% 
+            slice(which.max(date)) %>% 
+            pull(hosp_new)
+        
+        valueBox(comma(vb_hosp_new), subtitle = "New Hospitalizations", icon = icon("hospital-user"), color = "green")
+        
+    })
+    
+    # last part of server should turn off waiter (load screen)
+    waiter_hide()
     
 }
 
