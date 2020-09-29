@@ -109,7 +109,7 @@ ui <- dashboardPage(skin = "blue",
     ),
     dashboardBody(
         use_waiter(),
-        waiter_show_on_load(html = spin_folding_cube()),
+        waiter_on_busy(html = spin_folding_cube()),
         tabItems(
             tabItem(tabName = "dashboard",
                 fluidRow(
@@ -124,7 +124,7 @@ ui <- dashboardPage(skin = "blue",
                     valueBoxOutput("vb_hosp_yes", width = 3),
                     valueBoxOutput("vb_hosp_new", width = 3)
                 ),
-                fluidRow(plotlyOutput("pos_new", height = "800px"))
+                fluidRow(plotlyOutput("pos_new", height = "700px"))
                 ),
             
             tabItem(tabName = "about",
