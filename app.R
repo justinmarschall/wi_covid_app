@@ -175,7 +175,9 @@ get_data <- function(x){
         mutate(date = as.POSIXct(date / 1000, origin = "1970-01-01"),
                date = as.Date(date)) %>% 
         arrange(date) %>% 
-        mutate(pos_new_pct = pos_new / (pos_new + neg_new),
+        mutate(pos_new_pct = pos_new / (test_new),
+               pos_new_pct_7  = rollmean(pos_new_pct, k = 7,  fill = NA, align = "right"),
+               pos_new_pct_14 = rollmean(pos_new_pct, k = 14, fill = NA, align = "right"),
                hosp_new = hosp_yes - lag(hosp_yes, 1),
                pos_0_9_new   =   pos_0_9 - lag(pos_0_9, 1),
                pos_10_19_new = pos_10_19 - lag(pos_10_19, 1),
@@ -214,7 +216,14 @@ server <- function(input, output) {
                   input$y_var == "deaths" ~ "Cumulative Deaths by Day",
                   input$y_var == "dth_new" ~ "New Deaths by Day",
                   input$y_var == "hosp_yes" ~ "Cumulative Hospitalizations by Day",
-                  input$y_var == "hosp_new" ~ "New Hospitalizations by Day")
+                  input$y_var == "hosp_new" ~ "New Hospitalizations by Day",
+                  input$y_var == "pos_new_pct" ~ "Percent of New Tests that are Positive by Day")
+    })
+    
+    # plot y-axis label
+    plot_y_axis <- reactive({
+        case_when(input$y_var == "pos_new_pct" ~ "Percent",
+                  TRUE ~ "Count")
     })
     
     # create plot
@@ -224,7 +233,7 @@ server <- function(input, output) {
             plot_ly(df(), x = ~date, y = ~get(input$y_var), type = "scatter", mode = "lines", name = "Raw Data", color = I("#3288BD")) %>% 
                     add_trace(y = ~get(paste0(input$y_var, "_7")), name = "Rolling 7-Day Mean", color = I("#F46D43")) %>%
                     add_trace(y = ~get(paste0(input$y_var, "_14")), name = "Rolling 14-Day Mean", color = I("#5E4FA2")) %>% 
-            layout(yaxis = list(title = "Count"),
+            layout(yaxis = list(title = plot_y_axis()),
                    xaxis = list(title = "Date"),
                    title = paste("\n", plot_title()),
                    legend = list(orientation = "h"))
