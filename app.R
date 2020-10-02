@@ -103,9 +103,19 @@ ui <- dashboardPage(skin = "blue",
                                     "Waushara Co." = "WAUSHARA",
                                     "Winnebago Co." = "WINNEBAGO",
                                     "Wood Co." = "WOOD"),
-                        selected = "State Summary",
+                        selected = "WI",
                         selectize = TRUE)
-        )
+        ),
+        
+        selectInput("y_var",
+                    "Select Outcome",
+                    choices = c("Cumulative Positive Cases" = "positive",
+                                "New Positive Cases" = "pos_new",
+                                "Cumulative Deaths" = "deaths",
+                                "New Deaths" = "dth_new",
+                                "Cumulative Hospitalizations" = "hosp_yes",
+                                "New Hospitalizations" = "hosp_new"),
+                    selected = "pos_new")
     ),
     dashboardBody(
         use_waiter(),
@@ -165,7 +175,9 @@ get_data <- function(x){
         mutate(date = as.POSIXct(date / 1000, origin = "1970-01-01"),
                date = as.Date(date)) %>% 
         arrange(date) %>% 
-        mutate(pos_new_pct = pos_new / (pos_new + neg_new),
+        mutate(pos_new_pct = pos_new / (test_new),
+               pos_new_pct_7  = rollmean(pos_new_pct, k = 7,  fill = NA, align = "right"),
+               pos_new_pct_14 = rollmean(pos_new_pct, k = 14, fill = NA, align = "right"),
                hosp_new = hosp_yes - lag(hosp_yes, 1),
                pos_0_9_new   =   pos_0_9 - lag(pos_0_9, 1),
                pos_10_19_new = pos_10_19 - lag(pos_10_19, 1),
@@ -177,8 +189,12 @@ get_data <- function(x){
                pos_70_79_new = pos_70_79 - lag(pos_70_79, 1),
                pos_80_89_new = pos_80_89 - lag(pos_80_89, 1),
                pos_90_new    =    pos_90 - lag(pos_90, 1),
-               pos_new_7  = rollmean(pos_new, k = 7, fill = NA, align = "right"),
-               pos_new_14 = rollmean(pos_new, k = 14, fill = NA, align = "right")) %>% 
+               pos_new_7   = rollmean(pos_new,  k = 7,  fill = NA, align = "right"),
+               pos_new_14  = rollmean(pos_new,  k = 14, fill = NA, align = "right"),
+               dth_new_7   = rollmean(dth_new,  k = 7,  fill = NA, align = "right"),
+               dth_new_14  = rollmean(dth_new,  k = 14, fill = NA, align = "right"),
+               hosp_new_7  = rollmean(hosp_new, k = 7,  fill = NA, align = "right"),
+               hosp_new_14 = rollmean(hosp_new, k = 14, fill = NA, align = "right")) %>% 
         as_tibble()
     
 }
@@ -193,15 +209,42 @@ server <- function(input, output) {
         
     })
     
+    # plot title
+    plot_title <- reactive({
+        case_when(input$y_var == "positive" ~ "Cumulative Positive Cases by Day",
+                  input$y_var == "pos_new" ~ "New Positive Cases by Day",
+                  input$y_var == "deaths" ~ "Cumulative Deaths by Day",
+                  input$y_var == "dth_new" ~ "New Deaths by Day",
+                  input$y_var == "hosp_yes" ~ "Cumulative Hospitalizations by Day",
+                  input$y_var == "hosp_new" ~ "New Hospitalizations by Day",
+                  input$y_var == "pos_new_pct" ~ "Percent of New Tests that are Positive by Day")
+    })
+    
+    # plot y-axis label
+    plot_y_axis <- reactive({
+        case_when(input$y_var == "pos_new_pct" ~ "Percent",
+                  TRUE ~ "Count")
+    })
+    
     # create plot
-    output$pos_new <- renderPlotly(
-        plot_ly(df(), x = ~date, y = ~pos_new, type = "scatter", mode = "lines", name = "Raw Data", color = I("#3288BD")) %>% 
-            add_trace(y = ~pos_new_7, name = "Rolling 7-Day Mean", color = I("#F46D43")) %>% 
-            add_trace(y = ~pos_new_14, name = "Rolling 14-Day Mean", color = I("#5E4FA2")) %>% 
-            layout(yaxis = list(title = "Count"),
+    output$pos_new <- renderPlotly({
+        
+        if("new" %in% strsplit(input$y_var, "_")[[1]]) {
+            plot_ly(df(), x = ~date, y = ~get(input$y_var), type = "scatter", mode = "lines", name = "Raw Data", color = I("#3288BD")) %>% 
+                    add_trace(y = ~get(paste0(input$y_var, "_7")), name = "Rolling 7-Day Mean", color = I("#F46D43")) %>%
+                    add_trace(y = ~get(paste0(input$y_var, "_14")), name = "Rolling 14-Day Mean", color = I("#5E4FA2")) %>% 
+            layout(yaxis = list(title = plot_y_axis()),
                    xaxis = list(title = "Date"),
-                   title = "\nNew Positive Cases by Day")
-    )
+                   title = paste("\n", plot_title()),
+                   legend = list(orientation = "h"))
+        } else {
+            plot_ly(df(), x = ~date, y = ~get(input$y_var), type = "scatter", mode = "lines", name = "Raw Data", color = I("#3288BD")) %>% 
+                layout(yaxis = list(title = "Count"),
+                       xaxis = list(title = "Date"),
+                       title = paste("\n", plot_title()),
+                       legend = list(orientation = "h"))
+        }
+    })
     
     # calculate last updated value
     output$max_date <- renderPrint({
