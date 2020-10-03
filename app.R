@@ -14,6 +14,7 @@ library(zoo)
 library(DT)
 library(waiter)
 library(scales)
+library(glue)
 
 # ui ----------------------------------------------------------------------
 
@@ -23,6 +24,10 @@ ui <- dashboardPage(skin = "blue",
     dashboardSidebar(
         sidebarMenu(
             menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+            
+            menuSubItem("foo", tabName = "bar"),
+            
+            menuItem("Summary Table", tabName = "summary_table", icon = icon("table")),
             
             menuItem("About", tabName = "about", icon = icon("info")),
             
@@ -122,20 +127,30 @@ ui <- dashboardPage(skin = "blue",
         waiter_on_busy(html = spin_folding_cube()),
         tabItems(
             tabItem(tabName = "dashboard",
-                fluidRow(
-                    valueBoxOutput("vb_positive", width = 3),
-                    valueBoxOutput("vb_pos_new", width = 3),
-                    valueBoxOutput("vb_deaths", width = 3),
-                    valueBoxOutput("vb_dth_new", width = 3),
+                fluidPage(
+                    fluidRow(
+                        valueBoxOutput("vb_positive", width = 3),
+                        valueBoxOutput("vb_pos_new", width = 3),
+                        valueBoxOutput("vb_deaths", width = 3),
+                        valueBoxOutput("vb_dth_new", width = 3),
+                        ),
+                    fluidRow(
+                        valueBoxOutput("vb_pos_new_pct", width = 3),
+                        valueBoxOutput("vb_test_new", width = 3),
+                        valueBoxOutput("vb_hosp_yes", width = 3),
+                        valueBoxOutput("vb_hosp_new", width = 3)
                     ),
-                fluidRow(
-                    valueBoxOutput("vb_pos_new_pct", width = 3),
-                    valueBoxOutput("vb_test_new", width = 3),
-                    valueBoxOutput("vb_hosp_yes", width = 3),
-                    valueBoxOutput("vb_hosp_new", width = 3)
-                ),
-                fluidRow(plotlyOutput("pos_new", height = "700px"))
-                ),
+                    fluidRow(plotlyOutput("pos_new", height = "700px"))
+                )
+            ),
+            
+            tabItem(tabName = "summary_table",
+                    fluidPage(
+                        fluidRow(
+                            dataTableOutput("summary_table")
+                        )
+                    )
+            ),
             
             tabItem(tabName = "about",
                     h1("About"),
@@ -160,7 +175,7 @@ ui <- dashboardPage(skin = "blue",
 
 # server ------------------------------------------------------------------
 
-# create function to call API and get data
+# create function to call API and get data by county
 get_data <- function(x){
     json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=NAME%20%3D%20'", x, "'&outFields=*&outSR=4326&f=json")
     
@@ -199,6 +214,32 @@ get_data <- function(x){
     
 }
 
+# calculate max records for offset call in get_data_summary() function
+get_summary_count <- function(n_days) {
+    json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outFields=*&outSR=4326&f=json")
+    
+    json_data_summary_n <- fromJSON(json_file_summary_n, flatten = TRUE)
+    
+    json_data_summary_n$count
+    
+}
+
+# create function to call API and get data for all counties within last n_days
+get_data_summary <- function(offset, n_days) {
+    json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+    
+    json_data_summary <- fromJSON(json_file_summary, flatten = TRUE)
+    
+    df_summary <- json_data_summary$features
+    
+    names(df_summary) <- tolower(json_data_summary$fields$name)
+    
+    df_summary %>% 
+        mutate(date = as.POSIXct(date / 1000, origin = "1970-01-01"),
+               date = as.Date(date)) %>% 
+        as_tibble()
+    
+}
 
 # create server
 server <- function(input, output) {
@@ -209,6 +250,47 @@ server <- function(input, output) {
         
     })
     
+    # read in population data
+    df_population <- read_rds("wi_population_data.rds")
+    
+    # get summary data
+    output$summary_table <- DT::renderDataTable({
+        map_df(as.character(seq(0, get_summary_count(n_days = 8), 1500)), 
+               get_data_summary, 
+               n_days = 8) %>% 
+            filter(!is.na(name)) %>% 
+            mutate(name_join = str_to_lower(name),
+                   name_join = str_replace_all(name_join, pattern = "\\.", replacement = ""),
+                   name_join = str_replace_all(name_join, pattern = " ", replacement = ""),
+                   name_join = case_when(name_join == "wi" ~ "wisconsin",
+                                         TRUE ~ name_join)) %>% 
+            arrange(name, date) %>% 
+            group_by(name) %>% 
+            mutate(pos_new_7 = round(rollmean(pos_new, k = 7, fill = NA, align = "right"), 2),
+                   dth_new_7 = round(rollmean(dth_new, k = 7, fill = NA, align = "right"), 2),
+                   hosp_new = hosp_yes - lag(hosp_yes, 1)) %>% 
+            mutate(hosp_new_7 = round(rollmean(hosp_new, k = 7, fill = NA, align = "right"), 2)) %>% 
+            slice(which.max(date)) %>%
+            inner_join(df_population, by = c("name_join" = "location")) %>% 
+            # compute per capita metrics
+            mutate(pos_pc        = round(positive / total * 100, 2),
+                   pos_new_pc    = round(pos_new / total * 100, 2),
+                   pos_new_7_pc  = round(pos_new_7 / total * 100, 2),
+                   dth_pc        = round(deaths / total * 100, 2),
+                   dth_new_pc    = round(dth_new / total * 100, 2),
+                   dth_new_7_pc  = round(dth_new_7 / total * 100, 2),
+                   hosp_pc       = round(hosp_yes / total * 100, 2),
+                   hosp_new_pc   = round(hosp_new / total * 100, 2),
+                   hosp_new_7_pc = round(hosp_new_7 / total * 100, 2)) %>% 
+            select(name, 
+                   positive, pos_new, pos_new_7, pos_pc, pos_new_pc, pos_new_7_pc,
+                   deaths, dth_new, dth_new_7, dth_pc, dth_new_pc, dth_new_7_pc,
+                   hosp_yes, hosp_new, hosp_new_7, hosp_pc, hosp_new_pc, hosp_new_7_pc,
+                   total) %>% 
+            rename(pop = total)
+        
+    }, options = list(scrollX = TRUE))
+        
     # plot title
     plot_title <- reactive({
         case_when(input$y_var == "positive" ~ "Cumulative Positive Cases by Day",
