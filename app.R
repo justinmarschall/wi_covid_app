@@ -14,6 +14,7 @@ library(zoo)
 library(DT)
 library(waiter)
 library(scales)
+library(glue)
 
 # ui ----------------------------------------------------------------------
 
@@ -21,146 +22,179 @@ library(scales)
 ui <- dashboardPage(skin = "blue",
     dashboardHeader(title = "Wisconsin COVID-19 Dashboard", titleWidth = 325),
     dashboardSidebar(
-        sidebarMenu(
+        sidebarMenu(id = "sidebarid",
             menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+            
+            menuItem("Summary Table", tabName = "summary_table", icon = icon("table")),
             
             menuItem("About", tabName = "about", icon = icon("info")),
             
             tags$hr(),
             
-            selectInput("api_filter", 
-                        "Select State or County",
-                        choices = c("State Summary" = "WI",
-                                    "Adams Co." = "ADAMS",
-                                    "Ashland Co." = "ASHLAND",
-                                    "Barron Co." = "BARRON",
-                                    "Bayfield Co." = "BAYFIELD",
-                                    "Brown Co." = "BROWN",
-                                    "Buffalo Co." = "BUFFALO",
-                                    "Burnett Co." = "BURNETT",
-                                    "Calumet Co." = "CALUMET",
-                                    "Chippewa Co." = "CHIPPEWA",
-                                    "Clark Co." = "CLARK",
-                                    "Columbia Co." = "COLUMBIA",
-                                    "Crawford Co." = "CRAWFORD",
-                                    "Dane Co." = "DANE",
-                                    "Dodge Co." = "DODGE",
-                                    "Door Co." = "DOOR",
-                                    "Douglas Co." = "DOUGLAS",
-                                    "Dunn Co." = "DUNN",
-                                    "Eau Claire Co." = "EAU%20CLAIRE",
-                                    "Florence Co." = "FLORENCE",
-                                    "Fon du Lac Co." = "FOND%20DU%20LAC",
-                                    "Forest Co." = "FOREST",
-                                    "Grant Co." = "GRANT",
-                                    "Green Co." = "GREEN",
-                                    "Green Lake Co." = "GREEN%20LAKE",
-                                    "Iowa Co." = "IOWA",
-                                    "Iron Co." = "IRON",
-                                    "Jackson Co." = "JACKSON",
-                                    "Jefferson Co." = "JEFFERSON",
-                                    "Juneau Co." = "JUNEAU",
-                                    "Kenosha Co." = "KENOSHA",
-                                    "Kewaunee Co." = "KEWAUNEE",
-                                    "La Crosse Co." = "LA%20CROSSE",
-                                    "Lafayette Co." = "LAFAYETTE",
-                                    "Langlade Co." = "LANGLADE",
-                                    "Lincoln Co." = "LINCOLN",
-                                    "Manitowoc Co." = "MANITOWOC",
-                                    "Marathon Co." = "MARATHON",
-                                    "Marinette Co." = "MARINETTE",
-                                    "Marquette Co." = "MARQUETTE",
-                                    "Menominee Co." = "MENOMINEE",
-                                    "Milwaukee Co." = "MILWAUKEE",
-                                    "Monroe Co." = "MONROE",
-                                    "Oconto Co." = "OCONTO",
-                                    "Oneida Co." = "ONEIDA",
-                                    "Outagamie Co." = "OUTAGAMIE",
-                                    "Ozaukee Co." = "OZAUKEE",
-                                    "Pepin Co." = "PEPIN",
-                                    "Pierce Co." = "PIERCE",
-                                    "Polk Co." = "POLK",
-                                    "Portage Co." = "PORTAGE",
-                                    "Price Co." = "PRICE",
-                                    "Racine Co." = "RACINE",
-                                    "Richland Co." = "RICHLAND",
-                                    "Rock Co." = "ROCK",
-                                    "Rusk Co." = "RUSK",
-                                    "Sauk Co." = "SAUK",
-                                    "Sawyer Co." = "SAWYER",
-                                    "Shawano Co." = "SHAWANO",
-                                    "Sheboygan Co." = "SHEBOYGAN",
-                                    "St. Croix Co." = "ST.%20CROIX",
-                                    "Taylor Co." = "TAYLOR",
-                                    "Trempealeau Co." = "TREMPEALEAU",
-                                    "Vernon Co." = "VERNON",
-                                    "Vilas Co." = "VILAS",
-                                    "Walworth Co." = "WALWORTH",
-                                    "Washburn Co." = "WASHBURN",
-                                    "Washington Co." = "WASHINGTON",
-                                    "Waukesha Co." = "WAUKESHA",
-                                    "Waupaca Co." = "WAUPACA",
-                                    "Waushara Co." = "WAUSHARA",
-                                    "Winnebago Co." = "WINNEBAGO",
-                                    "Wood Co." = "WOOD"),
-                        selected = "WI",
-                        selectize = TRUE)
-        ),
-        
-        selectInput("y_var",
-                    "Select Outcome",
-                    choices = c("Cumulative Positive Cases" = "positive",
-                                "New Positive Cases" = "pos_new",
-                                "Cumulative Deaths" = "deaths",
-                                "New Deaths" = "dth_new",
-                                "Cumulative Hospitalizations" = "hosp_yes",
-                                "New Hospitalizations" = "hosp_new"),
-                    selected = "pos_new")
+            conditionalPanel('input.sidebarid == "dashboard"',
+            
+                selectInput("api_filter", 
+                            "Select State or County",
+                            choices = c("State Summary" = "WI",
+                                        "Adams Co." = "ADAMS",
+                                        "Ashland Co." = "ASHLAND",
+                                        "Barron Co." = "BARRON",
+                                        "Bayfield Co." = "BAYFIELD",
+                                        "Brown Co." = "BROWN",
+                                        "Buffalo Co." = "BUFFALO",
+                                        "Burnett Co." = "BURNETT",
+                                        "Calumet Co." = "CALUMET",
+                                        "Chippewa Co." = "CHIPPEWA",
+                                        "Clark Co." = "CLARK",
+                                        "Columbia Co." = "COLUMBIA",
+                                        "Crawford Co." = "CRAWFORD",
+                                        "Dane Co." = "DANE",
+                                        "Dodge Co." = "DODGE",
+                                        "Door Co." = "DOOR",
+                                        "Douglas Co." = "DOUGLAS",
+                                        "Dunn Co." = "DUNN",
+                                        "Eau Claire Co." = "EAU%20CLAIRE",
+                                        "Florence Co." = "FLORENCE",
+                                        "Fon du Lac Co." = "FOND%20DU%20LAC",
+                                        "Forest Co." = "FOREST",
+                                        "Grant Co." = "GRANT",
+                                        "Green Co." = "GREEN",
+                                        "Green Lake Co." = "GREEN%20LAKE",
+                                        "Iowa Co." = "IOWA",
+                                        "Iron Co." = "IRON",
+                                        "Jackson Co." = "JACKSON",
+                                        "Jefferson Co." = "JEFFERSON",
+                                        "Juneau Co." = "JUNEAU",
+                                        "Kenosha Co." = "KENOSHA",
+                                        "Kewaunee Co." = "KEWAUNEE",
+                                        "La Crosse Co." = "LA%20CROSSE",
+                                        "Lafayette Co." = "LAFAYETTE",
+                                        "Langlade Co." = "LANGLADE",
+                                        "Lincoln Co." = "LINCOLN",
+                                        "Manitowoc Co." = "MANITOWOC",
+                                        "Marathon Co." = "MARATHON",
+                                        "Marinette Co." = "MARINETTE",
+                                        "Marquette Co." = "MARQUETTE",
+                                        "Menominee Co." = "MENOMINEE",
+                                        "Milwaukee Co." = "MILWAUKEE",
+                                        "Monroe Co." = "MONROE",
+                                        "Oconto Co." = "OCONTO",
+                                        "Oneida Co." = "ONEIDA",
+                                        "Outagamie Co." = "OUTAGAMIE",
+                                        "Ozaukee Co." = "OZAUKEE",
+                                        "Pepin Co." = "PEPIN",
+                                        "Pierce Co." = "PIERCE",
+                                        "Polk Co." = "POLK",
+                                        "Portage Co." = "PORTAGE",
+                                        "Price Co." = "PRICE",
+                                        "Racine Co." = "RACINE",
+                                        "Richland Co." = "RICHLAND",
+                                        "Rock Co." = "ROCK",
+                                        "Rusk Co." = "RUSK",
+                                        "Sauk Co." = "SAUK",
+                                        "Sawyer Co." = "SAWYER",
+                                        "Shawano Co." = "SHAWANO",
+                                        "Sheboygan Co." = "SHEBOYGAN",
+                                        "St. Croix Co." = "ST.%20CROIX",
+                                        "Taylor Co." = "TAYLOR",
+                                        "Trempealeau Co." = "TREMPEALEAU",
+                                        "Vernon Co." = "VERNON",
+                                        "Vilas Co." = "VILAS",
+                                        "Walworth Co." = "WALWORTH",
+                                        "Washburn Co." = "WASHBURN",
+                                        "Washington Co." = "WASHINGTON",
+                                        "Waukesha Co." = "WAUKESHA",
+                                        "Waupaca Co." = "WAUPACA",
+                                        "Waushara Co." = "WAUSHARA",
+                                        "Winnebago Co." = "WINNEBAGO",
+                                        "Wood Co." = "WOOD"),
+                            selected = "WI",
+                            selectize = TRUE),
+            
+                selectInput("y_var",
+                            "Select Outcome",
+                            choices = c("Cumulative Positive Cases" = "positive",
+                                        "New Positive Cases" = "pos_new",
+                                        "Cumulative Deaths" = "deaths",
+                                        "New Deaths" = "dth_new",
+                                        "Cumulative Hospitalizations" = "hosp_yes",
+                                        "New Hospitalizations" = "hosp_new"),
+                            selected = "pos_new")
+            )
+        )
     ),
     dashboardBody(
         use_waiter(),
         waiter_on_busy(html = spin_folding_cube()),
         tabItems(
             tabItem(tabName = "dashboard",
-                fluidRow(
-                    valueBoxOutput("vb_positive", width = 3),
-                    valueBoxOutput("vb_pos_new", width = 3),
-                    valueBoxOutput("vb_deaths", width = 3),
-                    valueBoxOutput("vb_dth_new", width = 3),
+                fluidPage(
+                    fluidRow(
+                        valueBoxOutput("vb_positive", width = 3),
+                        valueBoxOutput("vb_pos_new", width = 3),
+                        valueBoxOutput("vb_deaths", width = 3),
+                        valueBoxOutput("vb_dth_new", width = 3),
+                        ),
+                    fluidRow(
+                        valueBoxOutput("vb_pos_new_pct", width = 3),
+                        valueBoxOutput("vb_test_new", width = 3),
+                        valueBoxOutput("vb_hosp_yes", width = 3),
+                        valueBoxOutput("vb_hosp_new", width = 3)
                     ),
-                fluidRow(
-                    valueBoxOutput("vb_pos_new_pct", width = 3),
-                    valueBoxOutput("vb_test_new", width = 3),
-                    valueBoxOutput("vb_hosp_yes", width = 3),
-                    valueBoxOutput("vb_hosp_new", width = 3)
-                ),
-                fluidRow(plotlyOutput("pos_new", height = "700px"))
-                ),
+                    fluidRow(plotlyOutput("pos_new", height = "700px"))
+                )
+            ),
+            
+            tabItem(tabName = "summary_table",
+                    fluidPage(
+                        fluidRow(
+                            dataTableOutput("summary_table")
+                        )
+                    )
+            ),
             
             tabItem(tabName = "about",
-                    h1("About"),
-                    h2("Data"),
-                    p("Data comes from the Wisconsin Department of Health Services (DHS): ",
-                      a(href = "https://www.dhs.wisconsin.gov/covid-19/index.htm", "https://www.dhs.wisconsin.gov/covid-19/index.htm")),
-                    p("Please visit the DHS website for access to the data, 
-                      a data dictionary, and responses to frequently asked questions 
-                      (such as why confirmed cases can change from one day to the next)."),
-                    h2("Plots"),
-                    p("Plots are interactive.  Click on a legend element to add/remove.  Click and drag to zoom.  Double click to reset axes."),
-                    h2("Authorship"),
-                    p("App developed by Justin Marschall.  For source code or to report a bug, visit:", 
-                      a(href = "https://github.com/justinmarschall/wi_covid_app", "https://github.com/justinmarschall/wi_covid_app")),
-                    h2("Disclaimer"),
-                    p("While every attempt has been made to accurately represent these data, this app comes with no warrenty or guarantee."),
-                    h2("Last Updated"),
-                    verbatimTextOutput("max_date"))
+                    fluidPage(
+                        h1("About"),
+                        h2("Data"),
+                        h3("COVID-19"),
+                        p("Data comes from the Wisconsin Department of Health Services (DHS): ",
+                          a(href = "https://www.dhs.wisconsin.gov/covid-19/index.htm", "https://www.dhs.wisconsin.gov/covid-19/index.htm")),
+                        p("Please visit the DHS website for access to the data, 
+                          a data dictionary, and responses to frequently asked questions 
+                          (such as why confirmed cases can change from one day to the next or a new metric can be negative)."),
+                        h3("Population"),
+                        p("Wisconsin state and county population data also comes from the Wisconsin Department of Health Services: ",
+                          a(href = "https://www.dhs.wisconsin.gov/population/index.htm", "https://www.dhs.wisconsin.gov/population/index.htm")), 
+                        p("Population estimates were last updated in 2014."),
+                        h3("Summary Table Data & Abbreviations"),
+                        tags$ul("+ name = county or state overall"),
+                        tags$ul("+ pos = positive cases"),
+                        tags$ul("+ dth = deaths"),
+                        tags$ul("+ hosp = hospitalizations"),
+                        tags$ul("+ pop = population"),
+                        tags$ul("+ new = denotes newly reported occurrence"),
+                        tags$ul("+ new_7 = denotes 7-day rolling average"),
+                        tags$ul("+ pc = denotes per capita metric"),
+                        tags$ul("+ unless otherwise stated (contains *_new), summary table measures are cumulative"),
+                        h2("Plots"),
+                        p("Plots are interactive.  Click on a legend element to add/remove.  Click and drag to zoom.  Double click to reset axes."),
+                        h2("Authorship"),
+                        p("App developed by Justin Marschall.  For source code or to report a bug, visit:", 
+                          a(href = "https://github.com/justinmarschall/wi_covid_app", "https://github.com/justinmarschall/wi_covid_app")),
+                        h2("Disclaimer"),
+                        p("While every attempt has been made to accurately represent these data, this app comes with no warrenty or guarantee."),
+                        h2("COVID-19 Data Last Updated"),
+                        verbatimTextOutput("max_date")
+                    )
+            )
         )
     )
 )
 
 # server ------------------------------------------------------------------
 
-# create function to call API and get data
+# create function to call API and get data by county
 get_data <- function(x){
     json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=NAME%20%3D%20'", x, "'&outFields=*&outSR=4326&f=json")
     
@@ -199,6 +233,32 @@ get_data <- function(x){
     
 }
 
+# calculate max records for offset call in get_data_summary() function
+get_summary_count <- function(n_days) {
+    json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outFields=*&outSR=4326&f=json")
+    
+    json_data_summary_n <- fromJSON(json_file_summary_n, flatten = TRUE)
+    
+    json_data_summary_n$count
+    
+}
+
+# create function to call API and get data for all counties within last n_days
+get_data_summary <- function(offset, n_days) {
+    json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+    
+    json_data_summary <- fromJSON(json_file_summary, flatten = TRUE)
+    
+    df_summary <- json_data_summary$features
+    
+    names(df_summary) <- tolower(json_data_summary$fields$name)
+    
+    df_summary %>% 
+        mutate(date = as.POSIXct(date / 1000, origin = "1970-01-01"),
+               date = as.Date(date)) %>% 
+        as_tibble()
+    
+}
 
 # create server
 server <- function(input, output) {
@@ -209,6 +269,48 @@ server <- function(input, output) {
         
     })
     
+    # read in population data
+    df_population <- read_rds("wi_population_data.rds")
+    
+    # get summary data
+    output$summary_table <- DT::renderDataTable({
+        map_df(as.character(seq(0, get_summary_count(n_days = 8), 1500)), 
+               get_data_summary, 
+               n_days = 8) %>% 
+            filter(!is.na(name)) %>% 
+            mutate(name_join = str_to_lower(name),
+                   name_join = str_replace_all(name_join, pattern = "\\.", replacement = ""),
+                   name_join = str_replace_all(name_join, pattern = " ", replacement = ""),
+                   name_join = case_when(name_join == "wi" ~ "wisconsin",
+                                         TRUE ~ name_join)) %>% 
+            arrange(name, date) %>% 
+            group_by(name) %>% 
+            mutate(pos_new_7 = round(rollmean(pos_new, k = 7, fill = NA, align = "right"), 2),
+                   dth_new_7 = round(rollmean(dth_new, k = 7, fill = NA, align = "right"), 2),
+                   hosp_new = hosp_yes - lag(hosp_yes, 1)) %>% 
+            mutate(hosp_new_7 = round(rollmean(hosp_new, k = 7, fill = NA, align = "right"), 2)) %>% 
+            slice(which.max(date)) %>%
+            inner_join(df_population, by = c("name_join" = "location")) %>% 
+            # compute per capita metrics
+            mutate(pos_pc        = percent(positive / total, accuracy = 0.01),
+                   pos_new_pc    = percent(pos_new / total, accuracy = 0.01),
+                   pos_new_7_pc  = percent(pos_new_7 / total, accuracy = 0.01),
+                   dth_pc        = percent(deaths / total, accuracy = 0.01),
+                   dth_new_pc    = percent(dth_new / total, accuracy = 0.01),
+                   dth_new_7_pc  = percent(dth_new_7 / total, accuracy = 0.01),
+                   hosp_pc       = percent(hosp_yes / total, accuracy = 0.01),
+                   hosp_new_pc   = percent(hosp_new / total, accuracy = 0.01),
+                   hosp_new_7_pc = percent(hosp_new_7 / total, accuracy = 0.01)) %>% 
+            mutate(name = ifelse(name == "WI", "Wisconsin (State Overall)", name)) %>% 
+            select(name, 
+                   positive, pos_new, pos_new_7, pos_pc, pos_new_pc, pos_new_7_pc,
+                   deaths, dth_new, dth_new_7, dth_pc, dth_new_pc, dth_new_7_pc,
+                   hosp_yes, hosp_new, hosp_new_7, hosp_pc, hosp_new_pc, hosp_new_7_pc,
+                   total) %>% 
+            rename(pop = total)
+        
+    }, options = list(scrollX = TRUE))
+        
     # plot title
     plot_title <- reactive({
         case_when(input$y_var == "positive" ~ "Cumulative Positive Cases by Day",
