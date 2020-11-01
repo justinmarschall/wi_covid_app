@@ -15,6 +15,8 @@ library(DT)
 library(waiter)
 library(scales)
 library(glue)
+# library(urbnmapr) # needed but called directly
+# library(rjson)    # needed but called directly
 
 # ui ----------------------------------------------------------------------
 
@@ -24,6 +26,8 @@ ui <- dashboardPage(skin = "blue",
     dashboardSidebar(
         sidebarMenu(id = "sidebarid",
             menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+            
+            menuItem("Map", tabName = "map", icon = icon("map-marker-alt")),
             
             menuItem("Summary Table", tabName = "summary_table", icon = icon("table")),
             
@@ -120,6 +124,32 @@ ui <- dashboardPage(skin = "blue",
                                         "Cumulative Hospitalizations" = "hosp_yes",
                                         "New Hospitalizations" = "hosp_new"),
                             selected = "pos_new")
+            ),
+            
+            conditionalPanel('input.sidebarid == "map"',
+                             
+                             selectInput("map_var",
+                                         "Select Outcome",
+                                         choices = c("Cumulative Positive Cases" = "positive",
+                                                     "New Positive Cases" = "pos_new",
+                                                     "New Positive Cases (7-Day Rolling Average)" = "pos_new_7",
+                                                     "Cumulative Positive Cases per 10k" = "pos_pc",
+                                                     "New Positive Cases per 10k" = "pos_new_pc",
+                                                     "New Positive Cases per 10k (7-Day Rolling Average)" = "pos_new_7_pc",
+                                                     "Cumulative Deaths" = "deaths",
+                                                     "New Deaths" = "dth_new",
+                                                     "New Deaths (7-Day Rolling Average)" = "dth_new_7",
+                                                     "Cumulative Deaths per 10k" = "dth_pc",
+                                                     "New Deaths per 10k" = "dth_new_pc",
+                                                     "New Deaths per 10k (7-Day Rolling Average)" = "dth_new_7_pc",
+                                                     "Cumulative Hospitalizations" = "hosp_yes",
+                                                     "New Hospitalizations" = "hosp_new",
+                                                     "New Hospitalizations (7-Day Rolling Average)" = "hosp_new_7",
+                                                     "Cumulative Hospitalizations per 10k" = "hosp_pc",
+                                                     "New Hospitalizations per 10k" = "hosp_new_pc",
+                                                     "New Hospitalizations per 10k (7-Day Rolling Average)" = "hosp_new_7_pc",
+                                                     "Population (2014)" = "pop"),
+                                         selected = "pos_new_7_pc")
             )
         )
     ),
@@ -145,6 +175,11 @@ ui <- dashboardPage(skin = "blue",
                 )
             ),
             
+            tabItem(tabName = "map",
+                    fluidPage(
+                        fluidRow(plotlyOutput("map_plot", height = "900px"))
+                    )),
+            
             tabItem(tabName = "summary_table",
                     fluidPage(
                         fluidRow(
@@ -163,10 +198,14 @@ ui <- dashboardPage(skin = "blue",
                         p("Please visit the DHS website for access to the data, 
                           a data dictionary, and responses to frequently asked questions 
                           (such as why confirmed cases can change from one day to the next or a new metric can be negative)."),
+                        p("Note, DHS updated their reporting technology on 2020-10-17 which resulted in a down day for their system.  
+                          Rather than incorrectly reporting 0 for incremental metrics on that day, it has been removed from the data set.  
+                          Subsequent days may see a bump in daily metrics as reported cases carried over."),
                         h3("Population"),
                         p("Wisconsin state and county population data also comes from the Wisconsin Department of Health Services: ",
                           a(href = "https://www.dhs.wisconsin.gov/population/index.htm", "https://www.dhs.wisconsin.gov/population/index.htm")), 
                         p("Population estimates were last updated in 2014."),
+                        p("All per capita metrics are reported per 10,000 people in the county or state population, as appropriate."),
                         h3("Summary Table Data & Abbreviations"),
                         tags$ul("+ name = county or state overall"),
                         tags$ul("+ pos = positive cases"),
@@ -175,7 +214,7 @@ ui <- dashboardPage(skin = "blue",
                         tags$ul("+ pop = population"),
                         tags$ul("+ new = denotes newly reported occurrence"),
                         tags$ul("+ new_7 = denotes 7-day rolling average"),
-                        tags$ul("+ pc = denotes per capita metric"),
+                        tags$ul("+ pc = denotes per capita metric (per 10k people)"),
                         tags$ul("+ unless otherwise stated (contains *_new), summary table measures are cumulative"),
                         h2("Plots"),
                         p("Plots are interactive.  Click on a legend element to add/remove.  Click and drag to zoom.  Double click to reset axes."),
@@ -195,8 +234,14 @@ ui <- dashboardPage(skin = "blue",
 # server ------------------------------------------------------------------
 
 # create function to call API and get data by county
-get_data <- function(x){
-    json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=NAME%20%3D%20'", x, "'&outFields=*&outSR=4326&f=json")
+get_data <- function(name){
+    if(name == "WI") {
+        json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/11/query?where=NAME%20%3D%20'", name, "'&outFields=*&outSR=4326&f=json")
+        
+    } else {
+        json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/12/query?where=NAME%20%3D%20'", name, "'&outFields=*&outSR=4326&f=json")
+        
+    }
     
     json_data <- fromJSON(json_file, flatten = TRUE)
     
@@ -208,6 +253,7 @@ get_data <- function(x){
         df %>% 
         mutate(date = as.POSIXct(date / 1000, origin = "1970-01-01"),
                date = as.Date(date)) %>% 
+        filter(date != as.Date("2020-10-17")) %>% 
         arrange(date) %>% 
         mutate(pos_new_pct = pos_new / (test_new),
                pos_new_pct_7  = rollmean(pos_new_pct, k = 7,  fill = NA, align = "right"),
@@ -234,8 +280,14 @@ get_data <- function(x){
 }
 
 # calculate max records for offset call in get_data_summary() function
-get_summary_count <- function(n_days) {
-    json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outFields=*&outSR=4326&f=json")
+get_summary_count <- function(name, n_days) {
+    if(name == "WI") {
+        json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/11/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outSR=4326&f=json")
+    
+    } else {
+        json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/12/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outSR=4326&f=json")
+        
+    }
     
     json_data_summary_n <- fromJSON(json_file_summary_n, flatten = TRUE)
     
@@ -244,8 +296,14 @@ get_summary_count <- function(n_days) {
 }
 
 # create function to call API and get data for all counties within last n_days
-get_data_summary <- function(offset, n_days) {
-    json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/10/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+get_data_summary <- function(name, offset, n_days) {
+    if(name == "WI") {
+        json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/11/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+        
+    } else {
+        json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/12/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+        
+    }
     
     json_data_summary <- fromJSON(json_file_summary, flatten = TRUE)
     
@@ -265,18 +323,23 @@ server <- function(input, output) {
     
     # get data
     df <- reactive({
-        get_data(x = input$api_filter)
+        get_data(name = input$api_filter)
         
     })
     
     # read in population data
     df_population <- read_rds("wi_population_data.rds")
     
+    # change per capita calculation
+    pc_factor <- 10000
+    
     # get summary data
     output$summary_table <- DT::renderDataTable({
-        map_df(as.character(seq(0, get_summary_count(n_days = 8), 1500)), 
+        map_df(as.character(seq(0, get_summary_count("County", n_days = 8), 1000)), 
                get_data_summary, 
-               n_days = 8) %>% 
+               n_days = 8,
+               name = "County") %>% 
+            union_all(get_data_summary("WI", n_days = 8, offset = 0)) %>% 
             filter(!is.na(name)) %>% 
             mutate(name_join = str_to_lower(name),
                    name_join = str_replace_all(name_join, pattern = "\\.", replacement = ""),
@@ -292,22 +355,33 @@ server <- function(input, output) {
             slice(which.max(date)) %>%
             inner_join(df_population, by = c("name_join" = "location")) %>% 
             # compute per capita metrics
-            mutate(pos_pc        = percent(positive / total, accuracy = 0.01),
-                   pos_new_pc    = percent(pos_new / total, accuracy = 0.01),
-                   pos_new_7_pc  = percent(pos_new_7 / total, accuracy = 0.01),
-                   dth_pc        = percent(deaths / total, accuracy = 0.01),
-                   dth_new_pc    = percent(dth_new / total, accuracy = 0.01),
-                   dth_new_7_pc  = percent(dth_new_7 / total, accuracy = 0.01),
-                   hosp_pc       = percent(hosp_yes / total, accuracy = 0.01),
-                   hosp_new_pc   = percent(hosp_new / total, accuracy = 0.01),
-                   hosp_new_7_pc = percent(hosp_new_7 / total, accuracy = 0.01)) %>% 
+            mutate(pos_pc        = round(positive / (total / pc_factor), 2),
+                   pos_new_pc    = round(pos_new / (total / pc_factor), 2),
+                   pos_new_7_pc  = round(pos_new_7 / (total / pc_factor), 2),
+                   dth_pc        = round(deaths / (total / pc_factor), 2),
+                   dth_new_pc    = round(dth_new / (total / pc_factor), 2),
+                   dth_new_7_pc  = round(dth_new_7 / (total / pc_factor), 2),
+                   hosp_pc       = round(hosp_yes / (total / pc_factor), 2),
+                   hosp_new_pc   = round(hosp_new / (total / pc_factor), 2),
+                   hosp_new_7_pc = round(hosp_new_7 / (total / pc_factor), 2)) %>% 
             mutate(name = ifelse(name == "WI", "Wisconsin (State Overall)", name)) %>% 
             select(name, 
                    positive, pos_new, pos_new_7, pos_pc, pos_new_pc, pos_new_7_pc,
                    deaths, dth_new, dth_new_7, dth_pc, dth_new_pc, dth_new_7_pc,
                    hosp_yes, hosp_new, hosp_new_7, hosp_pc, hosp_new_pc, hosp_new_7_pc,
                    total) %>% 
-            rename(pop = total)
+            rename(pop = total,
+                   pos = positive,
+                   dth = deaths,
+                   hosp = hosp_new) #%>% 
+            # remove abbv (perhaps do in future)
+            # rename(Name = name,
+            #        "Cumulative Positive Cases" = positive,
+            #        "New Positive Cases" = pos_new,
+            #        "New Positive Cases (7-Day Rolling Average)" = pos_new_7,
+            #        "Cumulative Positive Cases per 10k" = pos_pc,
+            #        "New Positive Cases per 10k" = pos_new_pc,
+            #        "New Positive Cases per 10k (7-Day Rolling Average)" = pos_new_7_pc)
         
     }, options = list(scrollX = TRUE))
         
@@ -328,7 +402,7 @@ server <- function(input, output) {
                   TRUE ~ "Count")
     })
     
-    # create plot
+    # create plot for main dashboard
     output$pos_new <- renderPlotly({
         
         if("new" %in% strsplit(input$y_var, "_")[[1]]) {
@@ -338,13 +412,15 @@ server <- function(input, output) {
             layout(yaxis = list(title = plot_y_axis()),
                    xaxis = list(title = "Date"),
                    title = paste("\n", plot_title()),
-                   legend = list(orientation = "h"))
+                   legend = list(orientation = "h"),
+                   hovermode = "compare")
         } else {
             plot_ly(df(), x = ~date, y = ~get(input$y_var), type = "scatter", mode = "lines", name = "Raw Data", color = I("#3288BD")) %>% 
                 layout(yaxis = list(title = "Count"),
                        xaxis = list(title = "Date"),
                        title = paste("\n", plot_title()),
-                       legend = list(orientation = "h"))
+                       legend = list(orientation = "h"),
+                       hovermode = "compare")
         }
     })
     
@@ -441,6 +517,554 @@ server <- function(input, output) {
             pull(hosp_new)
         
         valueBox(comma(vb_hosp_new), subtitle = "New Hospitalizations", icon = icon("hospital-user"), color = "green")
+        
+    })
+    
+    # get data for map
+    df_map <- 
+        map_df(as.character(seq(0, get_summary_count("County", n_days = 8), 1000)), 
+               get_data_summary, 
+               n_days = 8,
+               name = "County") %>% 
+        filter(!is.na(name)) %>% 
+        mutate(name_join = str_to_lower(name),
+               name_join = str_replace_all(name_join, pattern = "\\.", replacement = ""),
+               name_join = str_replace_all(name_join, pattern = " ", replacement = ""),
+               name_join = case_when(name_join == "wi" ~ "wisconsin",
+                                     TRUE ~ name_join)) %>% 
+        arrange(name, date) %>% 
+        group_by(name) %>% 
+        mutate(pos_new_7 = round(rollmean(pos_new, k = 7, fill = NA, align = "right"), 2),
+               dth_new_7 = round(rollmean(dth_new, k = 7, fill = NA, align = "right"), 2),
+               hosp_new = hosp_yes - lag(hosp_yes, 1)) %>% 
+        mutate(hosp_new_7 = round(rollmean(hosp_new, k = 7, fill = NA, align = "right"), 2)) %>% 
+        slice(which.max(date)) %>%
+        inner_join(df_population, by = c("name_join" = "location")) %>% 
+        # compute per capita metrics
+        mutate(pos_pc        = round(positive / (total / pc_factor), 2),
+               pos_new_pc    = round(pos_new / (total / pc_factor), 2),
+               pos_new_7_pc  = round(pos_new_7 / (total / pc_factor), 2),
+               dth_pc        = round(deaths / (total / pc_factor), 2),
+               dth_new_pc    = round(dth_new / (total / pc_factor), 2),
+               dth_new_7_pc  = round(dth_new_7 / (total / pc_factor), 2),
+               hosp_pc       = round(hosp_yes / (total / pc_factor), 2),
+               hosp_new_pc   = round(hosp_new / (total / pc_factor), 2),
+               hosp_new_7_pc = round(hosp_new_7 / (total / pc_factor), 2)) %>% 
+        mutate(name = ifelse(name == "WI", "Wisconsin (State Overall)", name)) %>% 
+        select(name, 
+               positive, pos_new, pos_new_7, pos_pc, pos_new_pc, pos_new_7_pc,
+               deaths, dth_new, dth_new_7, dth_pc, dth_new_pc, dth_new_7_pc,
+               hosp_yes, hosp_new, hosp_new_7, hosp_pc, hosp_new_pc, hosp_new_7_pc,
+               total) %>% 
+        rename(pop = total) %>% 
+        mutate(county_name = paste(name, "County"))
+    
+    wi_fips <- 
+        urbnmapr::counties %>% 
+        filter(state_name == "Wisconsin") %>% 
+        distinct(county_name, county_fips) %>% 
+        inner_join(df_map,
+                   by = "county_name")
+    
+    # data for map
+    url <- "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json"
+    counties <- rjson::fromJSON(file=url)
+    
+    # plot title
+    plot_title_map <- reactive({
+        case_when(input$map_var == "positive" ~ "Cumulative Positive Cases",
+                  input$map_var == "pos_new" ~ "New Positive Cases",
+                  input$map_var == "pos_new_7" ~ "New Positive Cases (7-Day Rolling Average)",
+                  input$map_var == "pos_pc" ~ "Cumulative Positive Cases per 10k",
+                  input$map_var == "pos_new_pc" ~ "New Positive Cases per 10k",
+                  input$map_var == "pos_new_7_pc" ~ "New Positive Cases per 10k (7-Day Rolling Average)",
+                  
+                  input$map_var == "deaths" ~ "Cumulative Deaths",
+                  input$map_var == "dth_new" ~ "New Deaths",
+                  input$map_var == "dth_new_7" ~ "New Deaths (7-Day Rolling Average)",
+                  input$map_var == "dth_pc" ~ "Cumulative Deaths per 10k",
+                  input$map_var == "dth_new_pc" ~ "New Deaths per 10k",
+                  input$map_var == "dth_new_7_pc" ~ "New Deaths per 10k (7-Day Rolling Average)",
+                  
+                  input$map_var == "hosp_yes" ~ "Cumulative Hospitalizations",
+                  input$map_var == "hosp_new" ~ "New Hospitalizations",
+                  input$map_var == "hosp_new_7" ~ "New Hospitalizations (7-Day Rolling Average)",
+                  input$map_var == "hosp_pc" ~ "Cumulative Hospitalizations per 10k",
+                  input$map_var == "hosp_new_pc" ~ "New Hospitalizations per 10k",
+                  input$map_var == "hosp_new_7_pc" ~ "New Hospitalizations per 10k (7-Day Rolling Average)",
+                  
+                  input$map_var == "pop" ~ "Population (2014)")
+    })
+    
+    # create map plot
+    # ~get(...) operation is currently adding strange legend title that can't be removed
+    # so this code is commented out in favor of the long if else approach below
+    # TODO revisit this in the future
+    # output$map_plot <- renderPlotly({
+    #     plot_ly(wi_fips) %>% 
+    #         add_trace(type = "choroplethmapbox",
+    #                   geojson = counties,
+    #                   locations = wi_fips$county_fips,
+    #                   z = ~get(input$map_var),
+    #                   # z = wi_fips$pos_new,
+    #                   colorscale = "Viridis",
+    #                   marker=list(line=list(
+    #                       width = 0),
+    #                       opacity = 0.5
+    #                   ),
+    #                   name = "County",
+    #                   text = wi_fips$name,
+    #                   hovertemplate = paste("%{text}",
+    #                                         "<br>Value: %{z}")
+    #                   ) %>% 
+    #         layout(
+    #             mapbox=list(
+    #                 style="carto-positron",
+    #                 zoom = 6.3,
+    #                 center = list(lat = 44.95, lon = -89.63))#,
+    #             # title = paste("\n", plot_title_map())
+    #         )
+    #     
+    # })
+    
+    output$map_plot <- renderPlotly({
+        if(input$map_var == "positive") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$positive,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+        } else if (input$map_var == "pos_new") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$pos_new,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if (input$map_var == "pos_new_7") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$pos_new_7,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "pos_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$pos_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "pos_new_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$pos_new_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "pos_new_7_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$pos_new_7_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "deaths") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$deaths,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "dth_new") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$dth_new,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "dth_new_7") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$dth_new_7,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "dth_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$dth_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "dth_new_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$dth_new_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "dth_new_7_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$dth_new_7_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "hosp_yes") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$hosp_yes,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "hosp_new") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$hosp_new,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "hosp_new_7") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$hosp_new_7,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "hosp_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$hosp_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "hosp_new_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$hosp_new_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "hosp_new_7_pc") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$hosp_new_7_pc,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z:.2f}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        } else if(input$map_var == "pop") {
+            plot_ly() %>% 
+                add_trace(type = "choroplethmapbox",
+                          geojson = counties,
+                          locations = wi_fips$county_fips,
+                          z = wi_fips$pop,
+                          colorscale = "Viridis",
+                          marker = list(line = list(
+                              width = 0),
+                              opacity = 0.5),
+                          name = "County",
+                          text = wi_fips$name,
+                          hovertemplate = paste("%{text}",
+                                                "<br>Value: %{z}")
+                ) %>% 
+                layout(
+                    mapbox=list(
+                        style="carto-positron",
+                        zoom = 6.3,
+                        center = list(lat = 44.95, lon = -89.63)),
+                    title = paste("\n", plot_title_map())
+                )
+            
+        }
         
     })
     
