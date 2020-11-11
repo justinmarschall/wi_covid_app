@@ -236,10 +236,10 @@ ui <- dashboardPage(skin = "blue",
 # create function to call API and get data by county
 get_data <- function(name){
     if(name == "WI") {
-        json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/11/query?where=NAME%20%3D%20'", name, "'&outFields=*&outSR=4326&f=json")
+        json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/MapServer/11/query?where=NAME%20%3D%20'", name, "'&outFields=*&outSR=4326&f=json")
         
     } else {
-        json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/12/query?where=NAME%20%3D%20'", name, "'&outFields=*&outSR=4326&f=json")
+        json_file <- paste0("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/MapServer/12/query?where=NAME%20%3D%20'", name, "'&outFields=*&outSR=4326&f=json")
         
     }
     
@@ -282,10 +282,10 @@ get_data <- function(name){
 # calculate max records for offset call in get_data_summary() function
 get_summary_count <- function(name, n_days) {
     if(name == "WI") {
-        json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/11/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outSR=4326&f=json")
+        json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/MapServer/11/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outSR=4326&f=json")
     
     } else {
-        json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/12/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outSR=4326&f=json")
+        json_file_summary_n <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/MapServer/12/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&returnCountOnly=true&outSR=4326&f=json")
         
     }
     
@@ -298,10 +298,10 @@ get_summary_count <- function(name, n_days) {
 # create function to call API and get data for all counties within last n_days
 get_data_summary <- function(name, offset, n_days) {
     if(name == "WI") {
-        json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/11/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+        json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/MapServer/11/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
         
     } else {
-        json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/FeatureServer/12/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
+        json_file_summary <- glue("https://dhsgis.wi.gov/server/rest/services/DHS_COVID19/COVID19_WI/MapServer/12/query?where=DATE>=CURRENT_TIMESTAMP-{n_days}&resultOffset={offset}&outFields=*&outSR=4326&f=json")
         
     }
     
