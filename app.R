@@ -373,7 +373,7 @@ server <- function(input, output) {
             rename(pop = total,
                    pos = positive,
                    dth = deaths,
-                   hosp = hosp_new) #%>% 
+                   hosp = hosp_yes) #%>% 
             # remove abbv (perhaps do in future)
             # rename(Name = name,
             #        "Cumulative Positive Cases" = positive,
